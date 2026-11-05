@@ -1,4 +1,7 @@
 """Streamlit soru ekranı; bütün sorgular güvenli servis üzerinden yürütülür."""
+from collections import deque
+import hashlib
+import json
 from time import perf_counter
 import sqlite3
 import pandas as pd
@@ -161,3 +164,79 @@ if saved:
         st.error(response.get("message", "İstek tamamlanamadı."))
         if response.get("error_type"):
             st.caption(f"Hata türü: {response['error_type']}")
+
+
+st.divider()
+if st.toggle("Sorgu loglarını göster"):
+    st.subheader("Sorgu logları")
+    try:
+        with settings.log_path.open(encoding="utf-8") as stream:
+            recent = deque(stream, maxlen=200)
+    except FileNotFoundError:
+        recent = []
+    except (OSError, UnicodeError):
+        recent = []
+        st.warning("Log dosyası okunamadı.")
+
+    events = []
+    raw_events = []
+    for line in reversed(recent):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            raw_events.append(event)
+            events.append({
+                "Zaman": event.get("timestamp"),
+                "İstek kimliği": event.get("request_id"),
+                "Soru": event.get("question"),
+                "Durum": event.get("status"),
+                "Hata": event.get("error_type"),
+                "Süre (ms)": event.get("duration_ms"),
+                "Satır": event.get("row_count"),
+                "Yeniden deneme": event.get("retry_count"),
+                "SQL kontrolü": (event.get("sql_review") or {}).get("status"),
+                "Yürütülen SQL": event.get("executed_sql"),
+            })
+    if events:
+        statuses = sorted({event["Durum"] for event in events if isinstance(event["Durum"], str)})
+        def reset_log_page():
+            st.session_state["log_page"] = 1
+
+        status_filter = st.multiselect("Duruma göre filtrele", statuses, on_change=reset_log_page)
+        visible_indices = [
+            index for index, event in enumerate(events)
+            if not status_filter or event["Durum"] in status_filter
+        ]
+        page_size = 10
+        page_count = max(1, (len(visible_indices) + page_size - 1) // page_size)
+        if st.session_state.get("log_page", 1) > page_count:
+            st.session_state["log_page"] = 1
+        page = st.number_input("Log sayfası", min_value=1, max_value=page_count,
+                               step=1, key="log_page", disabled=page_count == 1)
+        start = (page - 1) * page_size
+        page_indices = visible_indices[start:start + page_size]
+        st.caption(f"Sayfa {page}/{page_count} · Bu sayfada {len(page_indices)} kayıt · Filtreye uyan {len(visible_indices)} kayıt")
+        st.dataframe(pd.DataFrame([events[index] for index in page_indices]), hide_index=True, width="stretch")
+
+        by_request = {
+            events[index]["İstek kimliği"] or hashlib.sha256(
+                json.dumps(raw_events[index], sort_keys=True).encode("utf-8")
+            ).hexdigest(): index
+            for index in visible_indices
+        }
+
+        def log_label(option):
+            index = by_request[option]
+            event = events[index]
+            question = " ".join(str(event["Soru"] or "").split())[:100]
+            return f"{index + 1}. {event['Zaman'] or 'Tarih yok'} · {event['Durum'] or 'Durum yok'} · {question}"
+
+        selected = st.multiselect("İndirilecek logları seç", list(by_request), format_func=log_label)
+        if selected:
+            payload = json.dumps([raw_events[by_request[option]] for option in selected], ensure_ascii=False, indent=2)
+            st.download_button("Seçili logları indir", payload + "\n", file_name="nl2sql-loglar.json",
+                               mime="application/json", on_click="ignore")
+    else:
+        st.info("Görüntülenecek sorgu kaydı bulunamadı.")
