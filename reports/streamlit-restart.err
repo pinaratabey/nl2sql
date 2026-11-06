@@ -46,3 +46,10 @@ Traceback (most recent call last):
   File "C:\Users\PINAR\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
     self._sock.shutdown(socket.SHUT_RDWR)
 ConnectionResetError: [WinError 10054] Varolan bir baðlantý uzaktaki bir ana bilgisayar tarafýndan zorla kapatýldý
+2026-11-06 11:46:57.318 127.0.0.1:61427 - "GET / HTTP/1.1" 304
+2026-11-06 11:46:57.502 127.0.0.1:61427 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:46:57.507 127.0.0.1:60714 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:46:57.539 127.0.0.1:51855 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:46:57.540 connection open
+2026-11-06 11:47:40.771 127.0.0.1:50825 - "GET /media/4b96e2361260050df6d47fa6048c7799.csv HTTP/1.1" 200
+2026-11-06 11:47:46.044 127.0.0.1:53114 - "GET /static/media/SourceCodeVF-Upright.ttf.BjWn63N-.woff2 HTTP/1.1" 200

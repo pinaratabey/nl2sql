@@ -28,12 +28,13 @@ Komutlar sanal ortamdaki Python'u doğrudan kullanır. PowerShell'de ortamı etk
 
 **2. Gemini bağlantısını ayarlayın.**
 
-Proje kökünde `.env` adlı bir dosya oluşturun. İlk satıra API anahtarınızı yazın. Gerekirse ikinci satırdaki modeli erişebildiğiniz modelin adıyla değiştirin.
+Proje kökünde örnek ayar dosyasını kopyalayın. `.env` zaten varsa kopyalama adımını atlayın.
 
-```dotenv
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
+```powershell
+Copy-Item .env.example .env
 ```
+
+`.env` dosyasında `GEMINI_API_KEY` alanına API anahtarınızı yazın. Veritabanı, referans tarihi, süre ve satır sınırları ile log yolu şablonda hazırdır. Gerekirse `GEMINI_MODEL` değerini erişebildiğiniz modelin adıyla değiştirin.
 
 API anahtarınızı yalnızca yerel `.env` dosyanızda saklayın. Bu dosya Git tarafından yok sayılır.
 
