@@ -1,0 +1,48 @@
+2026-11-06 11:11:15.713 Uvicorn server started on 127.0.0.1:8501
+2026-11-06 11:12:47.649 127.0.0.1:62612 - "GET / HTTP/1.1" 304
+2026-11-06 11:12:47.976 127.0.0.1:62612 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:12:47.980 127.0.0.1:49842 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:12:48.002 127.0.0.1:62478 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:12:48.004 connection open
+2026-11-06 11:13:05.083 127.0.0.1:52873 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:13:05.085 127.0.0.1:62017 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:13:05.103 127.0.0.1:63986 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:13:05.104 connection open
+2026-11-06 11:13:06.940 127.0.0.1:62017 - "GET / HTTP/1.1" 304
+2026-11-06 11:13:06.997 127.0.0.1:62017 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:13:06.998 127.0.0.1:52873 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:13:07.012 127.0.0.1:63386 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:13:07.012 connection open
+2026-11-06 11:14:21.967 127.0.0.1:51936 - "GET / HTTP/1.1" 304
+2026-11-06 11:14:22.070 127.0.0.1:51936 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:14:22.079 127.0.0.1:51936 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:14:22.099 127.0.0.1:59500 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:14:22.101 connection open
+2026-11-06 11:14:40.872 127.0.0.1:63478 - "GET / HTTP/1.1" 304
+2026-11-06 11:14:40.972 127.0.0.1:63478 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:14:40.973 127.0.0.1:52585 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:14:40.991 127.0.0.1:49673 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:14:40.992 connection open
+2026-11-06 11:14:49.649 127.0.0.1:57519 - "GET / HTTP/1.1" 304
+2026-11-06 11:14:49.755 127.0.0.1:57519 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:14:49.757 127.0.0.1:49959 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:14:49.785 127.0.0.1:54547 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:14:49.785 connection open
+2026-11-06 11:14:58.529 127.0.0.1:55715 - "GET / HTTP/1.1" 304
+2026-11-06 11:14:58.666 127.0.0.1:55715 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:14:58.668 127.0.0.1:50555 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:14:58.694 127.0.0.1:64191 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:14:58.695 connection open
+2026-11-06 11:16:00.134 127.0.0.1:61742 - "GET / HTTP/1.1" 304
+2026-11-06 11:16:00.229 127.0.0.1:61742 - "GET /_stcore/health HTTP/1.1" 200
+2026-11-06 11:16:00.231 127.0.0.1:59888 - "GET /_stcore/host-config HTTP/1.1" 200
+2026-11-06 11:16:00.266 127.0.0.1:51165 - "WebSocket /_stcore/stream" [accepted]
+2026-11-06 11:16:00.268 connection open
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\PINAR\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\PINAR\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Varolan bir baðlantý uzaktaki bir ana bilgisayar tarafýndan zorla kapatýldý
