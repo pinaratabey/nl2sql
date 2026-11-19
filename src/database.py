@@ -16,7 +16,9 @@ class QueryError(RuntimeError):
         self.error_type = error_type
 
 
-def execute_query(sql: str, path: Path, timeout_seconds: float = 5, max_rows: int = 500) -> dict:
+def execute_query(
+    sql: str, path: Path, timeout_seconds: float = 5, max_rows: int = 500, *, parameters: tuple = (),
+) -> dict:
     from src.schema import ALLOWED_TABLES, inspect_schema
     from src.sql_security import ALLOWED_FUNCTIONS, validate_sql
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0 or not 1 <= max_rows <= 500:
@@ -51,7 +53,7 @@ def execute_query(sql: str, path: Path, timeout_seconds: float = 5, max_rows: in
         connection.set_progress_handler(progress, 100)
         # Dış LIMIT, modelin LIMIT/OFFSET'ini değiştirmez. Bir fazla satır kesilmeyi gösterir.
         bounded = f'SELECT * FROM ({validated}) AS "__bounded_result" LIMIT {max_rows + 1}'
-        cursor = connection.execute(bounded)
+        cursor = connection.execute(bounded, parameters)
         rows = cursor.fetchmany(max_rows + 1)
         if perf_counter() >= deadline:
             raise QueryError("query_timeout", "Sorgu süre sınırını aştı.")
