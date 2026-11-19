@@ -5,12 +5,65 @@ from datetime import datetime
 from time import perf_counter
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+from src.analyses import ANALYSES
 from src.config import load_settings
 from src.database import execute_query, QueryError
 from src.llm import generate_sql, ModelError
 from src.sql_security import SQLSecurityError
 
 TRANSIENT_ERRORS = {"model_timeout", "model_unavailable"}
+
+
+def _write_event(event, response, settings):
+    try:
+        serialized = json.dumps(event, ensure_ascii=False)
+        if settings.gemini_api_key:
+            serialized = serialized.replace(settings.gemini_api_key, "[REDACTED]")
+        settings.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with settings.log_path.open("a", encoding="utf-8") as stream:
+            stream.write(serialized + "\n")
+    except OSError:
+        response["log_warning"] = "İstek tamamlandı ancak olay kaydı yazılamadı. Kayıt klasörünü kontrol edin."
+
+
+def run_analysis(analysis_key: str, settings) -> dict:
+    analysis = ANALYSES[analysis_key]
+    started = perf_counter()
+    request_id = str(uuid4())
+    execution = error_type = None
+    try:
+        execution = execute_query(
+            analysis.sql, settings.database_path, settings.query_timeout_seconds, settings.max_result_rows,
+        )
+    except (QueryError, SQLSecurityError) as error:
+        status, message = "error", str(error)
+        error_type = getattr(error, "error_type", "sql_security")
+    except (OSError, sqlite3.Error, ValueError):
+        status, error_type = "error", "database_unavailable"
+        message = "Veri setine erişilemiyor. Veri yüklemesini kontrol edin."
+    else:
+        status, message = ("success", "Sonuçlar hazır.") if execution["rows"] else (
+            "empty", "Sorgu kayıt döndürmedi.",
+        )
+
+    duration = round((perf_counter() - started) * 1000)
+    response = {
+        "status": status, "message": message, "error_type": error_type,
+        "execution": execution, "analysis_sql": analysis.sql.strip(), "duration_ms": duration,
+        "request_id": request_id, "attempt_count": 0, "retry_count": 0,
+    }
+    details = execution or {}
+    event = {
+        "request_id": request_id, "timestamp": datetime.now(ZoneInfo("Europe/Istanbul")).isoformat(),
+        "question": analysis.title, "analysis": analysis_key, "generated_sql": None,
+        "executed_sql": details.get("executed_sql"), "status": status, "error_type": error_type,
+        "duration_ms": duration, "model_duration_ms": 0, "execution_duration_ms": details.get("duration_ms"),
+        "attempt_count": 0, "attempts": [], "retry_count": 0, "sql_review": None,
+        "row_count": details.get("row_count", 0), "truncated": details.get("truncated", False),
+        "model_id": None, "reference_date": settings.reference_date.isoformat(),
+    }
+    _write_event(event, response, settings)
+    return response
 
 
 def answer_question(question: str, settings=None, *, follow_up_context=None) -> dict:
@@ -126,14 +179,5 @@ def answer_question(question: str, settings=None, *, follow_up_context=None) -> 
              "execution_duration_ms":execution.get("duration_ms"),"attempt_count":len(attempts),"attempts":attempts,
              "retry_count":response["retry_count"],"sql_review":review,"row_count":execution.get("row_count",0),"truncated":execution.get("truncated",False),
              "model_id":settings.gemini_model,"reference_date":settings.reference_date.isoformat()}
-    try:
-        serialized = json.dumps(event,ensure_ascii=False)
-        if settings.gemini_api_key:
-            serialized = serialized.replace(settings.gemini_api_key,"[REDACTED]")
-        settings.log_path.parent.mkdir(parents=True,exist_ok=True)
-        with settings.log_path.open("a",encoding="utf-8") as stream:
-            stream.write(serialized+"\n")
-    except OSError:
-        # Sorguyu yeniden çalıştırma: sadece kayıt hatasını kullanıcıya bildir.
-        response["log_warning"] = "İstek tamamlandı ancak olay kaydı yazılamadı. Kayıt klasörünü kontrol edin."
+    _write_event(event, response, settings)
     return response
