@@ -4,6 +4,8 @@ from dataclasses import replace
 import hashlib
 import json
 from time import perf_counter
+import io
+import requests
 import sqlite3
 import pandas as pd
 import streamlit as st
@@ -60,7 +62,25 @@ def fill_question(text):
 def format_currency(value):
     number = f"{value:,.2f}".translate(str.maketrans(",.", ".,"))
     return f"{number} TL"
-
+def generate_ai_insight(question: str, df: pd.DataFrame, settings) -> str:
+    """Sorgu sonucunu analiz eder ve kısa yönetici özeti ile aksiyon önerisi üretir."""
+    preview = df.head(15).to_csv(index=False)
+    prompt = (
+        f"Kullanıcı sorusu: '{question}'\n"
+        f"Sorgu sonucu (CSV formatında ilk 15 satır):\n{preview}\n\n"
+        "Sen kıdemli bir FMCG iş analistisin. Bu tabloya bakarak:\n"
+        "1. Öne çıkan en kritik bulguyu 1-2 cümleyle özetle.\n"
+        "2. İş birimine yönelik somut, uygulanabilir 1 adet iyileştirme/aksiyon önerisi sun.\n"
+        "Kısa, net ve Türkçe yanıt ver."
+    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800}
+    }
+    resp = requests.post(url, json=payload, timeout=30)
+    resp.raise_for_status()
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 @st.fragment
 def show_sales_overview(settings):
@@ -206,6 +226,11 @@ if saved:
     execution = response.get("execution")
     if status == "success" and execution:
         # Aynı adlı SELECT sütunları da tabloya güvenle aktarılır.
+        # Güvenlik Denetim Rozeti
+        st.success(
+            f"🛡️ **Güvenlik Doğrulandı:** `sqlglot` AST Analizi Geçti · Salt-Okunur (Read-Only) Motor · {execution['duration_ms']} ms",
+            icon=":material/verified_user:"
+        )
         labels, used = [], set()
         for name in execution["columns"]:
             label, suffix = name, 2
@@ -222,12 +247,22 @@ if saved:
                 st.altair_chart(chart, width="stretch")
                 if chart_note:
                     st.caption(chart_note)
-        # İçerik HTML olarak kaçırılır; veri/SQL bir HTML talimatına dönüşmez.
-        table_html = frame.to_html(index=False, escape=True, classes="result-table", border=0)
-        st.markdown(f'<div class="result-scroll">{table_html}</div>', unsafe_allow_html=True)
-        with st.expander("Etkileşimli tabloyu aç"):
-            st.dataframe(frame, hide_index=True, width="stretch", row_height=52, height=min(620, 60 + 52 * max(1, len(frame))))
-        # Elektronik tablo uygulamalarının metni formül olarak yorumlamasını önle.
+        # AI Yönetici Özeti ve İyileştirme Önerisi
+        with st.container(border=True):
+            col_title, col_btn = st.columns([3, 1])
+            col_title.markdown("#### ✨ Yönetici Özeti & İyileştirme Önerisi")
+            if col_btn.button("Analizi Yorumla", key="btn_ai_insight", icon=":material/auto_awesome:"):
+                with st.spinner("Veriler yorumlanıyor ve öneri hazırlanıyor…"):
+                    try:
+                        insight_text = generate_ai_insight(saved["question"], frame, settings)
+                        st.session_state["last_insight"] = insight_text
+                    except Exception as e:
+                        st.error(f"Yorum üretilemedi: {e}")
+
+            if st.session_state.get("last_insight"):
+                st.markdown(st.session_state["last_insight"])
+            else:
+                st.caption("Sonuç tablosundan iş içgörüsü ve aksiyon önerisi çıkarmak için 'Analizi Yorumla' butonuna tıklayın.")
         def csv_cell(value):
             if isinstance(value, str) and (
                 value.startswith(("\t", "\r", "\n")) or value.lstrip().startswith(("=", "+", "-", "@"))
@@ -236,8 +271,26 @@ if saved:
             return value
 
         csv_frame = frame.map(csv_cell).rename(columns=csv_cell)
-        st.download_button("CSV indir", csv_frame.to_csv(index=False).encode("utf-8-sig"),
-                           file_name="nl2sql-sonuc.csv", mime="text/csv", on_click="ignore")
+        # CSV ve Excel yan yana indirme butonları
+        dl_col1, dl_col2, _ = st.columns([1, 1, 4])
+        dl_col1.download_button(
+            "CSV indir",
+            csv_frame.to_csv(index=False).encode("utf-8-sig"),
+            file_name="nl2sql-sonuc.csv",
+            mime="text/csv",
+            icon=":material/download:",
+        )
+
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+            csv_frame.to_excel(writer, index=False, sheet_name="Analiz Sonucu")
+        dl_col2.download_button(
+            "Excel (.xlsx) indir",
+            data=excel_buffer.getvalue(),
+            file_name="nl2sql-sonuc.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            icon=":material/table_view:",
+        )
         st.caption(f"{execution['row_count']} satır · Sorgu süresi: {execution['duration_ms']} ms")
         if execution.get("truncated"):
             st.warning(f"Sonuç sınırı nedeniyle ilk {settings.max_result_rows} satır gösteriliyor.")
