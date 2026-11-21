@@ -62,25 +62,34 @@ def fill_question(text):
 def format_currency(value):
     number = f"{value:,.2f}".translate(str.maketrans(",.", ".,"))
     return f"{number} TL"
-def generate_ai_insight(question: str, df: pd.DataFrame, settings) -> str:
-    """Sorgu sonucunu analiz eder ve kısa yönetici özeti ile aksiyon önerisi üretir."""
+def generate_ai_insight(question: str, sql: str, df: pd.DataFrame, settings) -> dict:
+    """Sorguyu ve sonucu analiz eder; SQL açıklaması, yönetici özeti ve 3 takip sorusu üretir."""
     preview = df.head(15).to_csv(index=False)
     prompt = (
         f"Kullanıcı sorusu: '{question}'\n"
+        f"Çalıştırılan SQL:\n{sql}\n"
         f"Sorgu sonucu (CSV formatında ilk 15 satır):\n{preview}\n\n"
-        "Sen kıdemli bir FMCG iş analistisin. Bu tabloya bakarak:\n"
-        "1. Öne çıkan en kritik bulguyu 1-2 cümleyle özetle.\n"
-        "2. İş birimine yönelik somut, uygulanabilir 1 adet iyileştirme/aksiyon önerisi sun.\n"
-        "Kısa, net ve Türkçe yanıt ver."
+        "Sen kıdemli bir FMCG iş analistisin. Yanıtını SADECE geçerli bir JSON objesi olarak döndür, başka metin ekleme.\n"
+        "JSON formatı tam olarak şu anahtarlara sahip olmalı:\n"
+        "{\n"
+        '  "sql_explanation": "Üretilen SQL sorgusunun teknik olmayan bir yöneticiye 1-2 cümlelik sade Türkçe açıklaması (hangi tablolar birleştirildi, ne hesaplandı).",\n'
+        '  "summary_and_action": "1. Kritik Bulgu: ... \\n\\n2. Aksiyon Önerisi: ... (Markdown formatında kısa, net ve somut Türkçe analiz)",\n'
+        '  "follow_up_questions": ["Bu analizi derinleştirecek 1. takip sorusu", "2. takip sorusu", "3. takip sorusu"]\n'
+        "}"
     )
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800}
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 900,
+            "responseMimeType": "application/json",
+        },
     }
     resp = requests.post(url, json=payload, timeout=30)
     resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return json.loads(raw_text)
 
 @st.fragment
 def show_sales_overview(settings):
@@ -216,7 +225,7 @@ if saved:
     st.subheader("Analiz sonucu")
     st.write(saved["question"])
     status = response["status"]
-    names = {"success":"Başarılı", "empty":"Boş sonuç", "clarification":"Açıklama gerekiyor", "rejected":"İstek reddedildi", "error":"Hata"}
+    names = {"success": "Başarılı", "empty": "Boş sonuç", "clarification": "Açıklama gerekiyor", "rejected": "İstek reddedildi", "error": "Hata"}
     retries = f" · Yeniden deneme {response.get('retry_count', 0)}" if not saved.get("analysis_key") else ""
     st.caption(f"{names.get(status, status)} · Toplam süre {saved['duration_ms']/1000:.2f} sn{retries}")
     if response.get("retry_count"):
@@ -225,12 +234,12 @@ if saved:
         st.warning(response["log_warning"])
     execution = response.get("execution")
     if status == "success" and execution:
-        # Aynı adlı SELECT sütunları da tabloya güvenle aktarılır.
         # Güvenlik Denetim Rozeti
         st.success(
             f"🛡️ **Güvenlik Doğrulandı:** `sqlglot` AST Analizi Geçti · Salt-Okunur (Read-Only) Motor · {execution['duration_ms']} ms",
             icon=":material/verified_user:"
         )
+        # Aynı adlı SELECT sütunları da tabloya güvenle aktarılır.
         labels, used = [], set()
         for name in execution["columns"]:
             label, suffix = name, 2
@@ -247,22 +256,45 @@ if saved:
                 st.altair_chart(chart, width="stretch")
                 if chart_note:
                     st.caption(chart_note)
-        # AI Yönetici Özeti ve İyileştirme Önerisi
+
+        st.dataframe(frame, hide_index=True, width="stretch", row_height=52, height=min(620, 60 + 52 * max(1, len(frame))))
+
+        # AI Yönetici Özeti, SQL Açıklaması ve Akıllı Takip Soruları
         with st.container(border=True):
             col_title, col_btn = st.columns([3, 1])
-            col_title.markdown("#### ✨ Yönetici Özeti & İyileştirme Önerisi")
+            col_title.markdown("#### ✨ Yönetici Özeti, SQL Açıklaması & Öneriler")
+            current_sql = response.get("analysis_sql") or (response.get("generation") or {}).get("result", {}).get("sql") or ""
+
             if col_btn.button("Analizi Yorumla", key="btn_ai_insight", icon=":material/auto_awesome:"):
-                with st.spinner("Veriler yorumlanıyor ve öneri hazırlanıyor…"):
+                with st.spinner("Veriler yorumlanıyor ve takip soruları hazırlanıyor…"):
                     try:
-                        insight_text = generate_ai_insight(saved["question"], frame, settings)
-                        st.session_state["last_insight"] = insight_text
+                        insight_data = generate_ai_insight(saved["question"], current_sql, frame, settings)
+                        st.session_state["last_insight"] = insight_data
                     except Exception as e:
                         st.error(f"Yorum üretilemedi: {e}")
 
-            if st.session_state.get("last_insight"):
-                st.markdown(st.session_state["last_insight"])
+            insight = st.session_state.get("last_insight")
+            if isinstance(insight, dict):
+                if insight.get("sql_explanation"):
+                    st.info(f"🔍 **Bu Sorgu Ne Yapıyor?** {insight['sql_explanation']}")
+                if insight.get("summary_and_action"):
+                    st.markdown(insight["summary_and_action"])
+
+                follow_ups = insight.get("follow_up_questions") or []
+                if follow_ups:
+                    st.markdown("**💡 Derinleşmek için sorabileceğiniz takip soruları:**")
+                    for idx, fq_text in enumerate(follow_ups):
+                        st.button(
+                            fq_text,
+                            key=f"fq_btn_{idx}",
+                            on_click=fill_question,
+                            args=(fq_text,),
+                            use_container_width=True,
+                        )
             else:
-                st.caption("Sonuç tablosundan iş içgörüsü ve aksiyon önerisi çıkarmak için 'Analizi Yorumla' butonuna tıklayın.")
+                st.caption("Sonuç tablosundan iş içgörüsü, SQL açıklaması ve takip soruları üretmek için 'Analizi Yorumla' butonuna tıklayın.")
+
+        # Elektronik tablo uygulamalarının metni formül olarak yorumlamasını önle.
         def csv_cell(value):
             if isinstance(value, str) and (
                 value.startswith(("\t", "\r", "\n")) or value.lstrip().startswith(("=", "+", "-", "@"))
@@ -271,6 +303,7 @@ if saved:
             return value
 
         csv_frame = frame.map(csv_cell).rename(columns=csv_cell)
+
         # CSV ve Excel yan yana indirme butonları
         dl_col1, dl_col2, _ = st.columns([1, 1, 4])
         dl_col1.download_button(
@@ -285,7 +318,7 @@ if saved:
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
             csv_frame.to_excel(writer, index=False, sheet_name="Analiz Sonucu")
         dl_col2.download_button(
-            "Excel (.xlsx) indir",
+            "Excel indir",
             data=excel_buffer.getvalue(),
             file_name="nl2sql-sonuc.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
